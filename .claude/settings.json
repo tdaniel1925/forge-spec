@@ -1,0 +1,18 @@
+{
+  "autoApprove": {
+    "edit": true,
+    "bash": true,
+    "create": true,
+    "write": true
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "MultiEdit",
+      "Write",
+      "Bash",
+      "Glob"
+    ]
+  }
+}

@@ -1,0 +1,204 @@
+# .cursorrules — CODE CONVENTIONS
+# These rules apply to all code written in this project.
+# Stack: Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Supabase
+
+---
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── (auth)/              # Auth pages (sign-in, sign-up, etc.)
+│   ├── (dashboard)/         # Protected app pages
+│   │   └── [entity]/        # One folder per entity
+│   │       ├── page.tsx     # List view
+│   │       ├── [id]/
+│   │       │   └── page.tsx # Detail view
+│   │       └── new/
+│   │           └── page.tsx # Create form
+│   ├── api/                 # API routes (only if needed)
+│   ├── layout.tsx
+│   └── page.tsx             # Landing/redirect
+├── components/
+│   ├── ui/                  # shadcn/ui components (don't modify)
+│   ├── theme-provider.tsx   # next-themes provider
+│   ├── theme-toggle.tsx     # Light/Dark/System toggle
+│   └── [entity]/            # Entity-specific components
+├── lib/
+│   ├── supabase/
+│   │   ├── client.ts        # Browser client
+│   │   ├── server.ts        # Server client
+│   │   └── middleware.ts     # Auth middleware helper
+│   ├── actions/             # Server Actions (one file per entity)
+│   │   └── [entity].ts
+│   ├── auth/                # Auth utilities
+│   ├── events/              # Event system (Stage 5)
+│   ├── automation/          # Automation rules (Stage 6)
+│   ├── ai/                  # AI layer (Stage 7)
+│   └── utils/               # Shared utilities
+├── types/
+│   ├── database.ts          # Generated Supabase types
+│   └── [entity].ts          # Entity-specific types
+└── middleware.ts             # Next.js middleware (route protection)
+
+supabase/
+├── migrations/              # SQL migrations (numbered)
+└── seed.sql                 # Optional seed data
+```
+
+---
+
+## Naming Conventions
+
+### Files and Folders
+- **Folders:** kebab-case (`user-profile/`)
+- **Components:** PascalCase (`UserCard.tsx`)
+- **Utilities:** camelCase (`formatDate.ts`)
+- **Actions:** camelCase, entity-prefixed (`createProject.ts` or grouped as `project.ts`)
+- **Types:** PascalCase (`Project.ts`)
+- **Migrations:** numbered prefix (`001_create_users.sql`)
+
+### Code
+- **Types/Interfaces:** PascalCase (`type ProjectStatus = ...`)
+- **Functions:** camelCase (`async function createProject()`)
+- **Constants:** SCREAMING_SNAKE_CASE (`const MAX_RETRIES = 3`)
+- **Database columns:** snake_case (`created_at`)
+- **Enum values:** snake_case (`active`, `in_progress`)
+- **Event types:** dot.separated (`project.created`, `task.status.changed`)
+
+---
+
+## TypeScript Rules
+
+- **Strict mode always.** No `any` types. Use `unknown` if truly unknown.
+- **Prefer `type` over `interface`** unless extending is needed.
+- **All server actions** must validate input with Zod before database operations.
+- **All database queries** must use typed Supabase client.
+- **Return types** must be explicit on all exported functions.
+- **Error handling** must use a consistent Result pattern:
+
+```typescript
+type Result<T> = { success: true; data: T } | { success: false; error: string }
+```
+
+---
+
+## Component Rules
+
+- **Server Components by default.** Only add `"use client"` when needed (interactivity, hooks).
+- **One component per file.** Named export matching filename.
+- **Props type** defined above the component, exported if reusable.
+- **shadcn/ui for all base components.** Don't build custom buttons, inputs, dialogs, etc.
+- **Tailwind only.** No CSS modules, no styled-components, no inline styles.
+- **Loading states** on every async operation.
+- **Error states** on every data fetch.
+
+---
+
+## Server Action Rules
+
+- **One file per entity** in `src/lib/actions/`.
+- **Every action** must: validate input (Zod), check permissions, execute operation, return Result.
+- **Never throw errors** from actions. Always return `{ success: false, error: "message" }`.
+- **Always use `revalidatePath`** after mutations.
+- **Always set `updated_at = new Date().toISOString()`** on updates.
+- **Always set `created_by = user.id`** on creates.
+- **Soft delete only:** set `archived_at`, never use `.delete()`.
+
+```typescript
+"use server"
+
+import { z } from "zod"
+import { createClient } from "@/lib/supabase/server"
+
+const CreateProjectSchema = z.object({
+  name: z.string().min(1).max(255),
+  // ... fields from PROJECT-SPEC.md Gate 1
+})
+
+export async function createProject(input: z.infer<typeof CreateProjectSchema>): Promise<Result<Project>> {
+  const parsed = CreateProjectSchema.safeParse(input)
+  if (!parsed.success) return { success: false, error: parsed.error.message }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Unauthorized" }
+
+  // Permission check against Gate 3
+  // ...
+
+  const { data, error } = await supabase
+    .from("projects")
+    .insert({ ...parsed.data, created_by: user.id })
+    .select()
+    .single()
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, data }
+}
+```
+
+---
+
+## Supabase Rules
+
+- **RLS enabled on every table.** No exceptions.
+- **Migrations are append-only.** Never edit a previous migration. Add a new one.
+- **Foreign keys** for every relationship in Gate 4.
+- **Indexes** on every foreign key column and any column used in WHERE clauses.
+- **Enums** for all entity states from Gate 1.
+
+---
+
+## Event System Rules (Stage 5+)
+
+- **Event names:** `entity.action` format (e.g., `project.created`, `task.status.changed`)
+- **Events are append-only.** No updates. No deletes. Ever.
+- **Event payload** must include: previous state, new state, and any relevant context.
+- **Event creation** happens inside the same transaction as the state change when possible.
+
+---
+
+## Import Order
+
+```typescript
+// 1. React/Next.js
+import { useState } from "react"
+import { redirect } from "next/navigation"
+
+// 2. External libraries
+import { z } from "zod"
+
+// 3. Internal: lib
+import { createClient } from "@/lib/supabase/server"
+import { createProject } from "@/lib/actions/project"
+
+// 4. Internal: components
+import { Button } from "@/components/ui/button"
+import { ProjectCard } from "@/components/project/project-card"
+
+// 5. Internal: types
+import type { Project } from "@/types/project"
+```
+
+---
+
+## Git Commit Convention
+
+```
+stage-[N]: [description]
+
+Examples:
+stage-1: create schema and types for all entities
+stage-2: implement auth and role management
+stage-3: add CRUD for projects and tasks
+stage-4: wire up project creation workflow
+stage-5: add event system
+stage-6: implement automation rules
+stage-7: add AI reasoning layer
+```
+
+---
+
+## End of .cursorrules
