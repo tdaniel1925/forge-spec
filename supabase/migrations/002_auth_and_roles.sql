@@ -37,15 +37,6 @@ CREATE INDEX idx_system_logs_event_type ON public.system_logs(event_type);
 CREATE INDEX idx_system_logs_user_id ON public.system_logs(user_id);
 CREATE INDEX idx_system_logs_logged_at ON public.system_logs(logged_at DESC);
 
--- RLS for system_logs (admin-only read access)
-ALTER TABLE public.system_logs ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "system_logs_admin_read" ON public.system_logs
-  FOR SELECT
-  USING (public.is_admin(auth.uid()));
-
--- Service role can insert logs (bypasses RLS)
-
 COMMENT ON TABLE public.system_logs IS 'System logging for auth and system events (Stage 2). Full event system in Stage 5.';
 
 -- =====================================================
@@ -58,7 +49,7 @@ RETURNS TRIGGER AS $$
 BEGIN
   UPDATE public.users
   SET last_login_at = NOW()
-  WHERE auth_id = NEW.id;
+  WHERE id = NEW.id;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -93,7 +84,7 @@ BEGIN
 
   -- Create user profile
   INSERT INTO public.users (
-    auth_id,
+    id,
     email,
     name,
     avatar_url,
@@ -140,7 +131,7 @@ DECLARE
 BEGIN
   SELECT role INTO user_role_value
   FROM public.users
-  WHERE auth_id = user_id;
+  WHERE id = user_id;
 
   RETURN user_role_value = required_role;
 END;
@@ -162,11 +153,24 @@ DECLARE
 BEGIN
   SELECT role INTO user_role_value
   FROM public.users
-  WHERE auth_id = auth.uid();
+  WHERE id = auth.uid();
 
   RETURN user_role_value;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =====================================================
+-- RLS POLICY SETUP (AFTER FUNCTIONS ARE DEFINED)
+-- =====================================================
+
+-- RLS for system_logs (admin-only read access)
+ALTER TABLE public.system_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "system_logs_admin_read" ON public.system_logs
+  FOR SELECT
+  USING (public.is_admin(auth.uid()));
+
+-- Service role can insert logs (bypasses RLS)
 
 -- =====================================================
 -- RLS POLICY UPDATES
@@ -178,7 +182,7 @@ DROP POLICY IF EXISTS "users_select_policy" ON public.users;
 CREATE POLICY "users_select_policy" ON public.users
   FOR SELECT
   USING (
-    auth.uid() = auth_id OR
+    auth.uid() = id OR
     public.is_admin(auth.uid())
   );
 

@@ -14,6 +14,15 @@
 --
 -- =====================================================
 
+-- Utility function to update updated_at (if not already created in migration 001)
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Automation execution log (tracks all automation runs)
 CREATE TABLE public.automation_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -132,7 +141,7 @@ INSERT INTO public.scheduled_jobs (job_name, job_type, schedule, enabled, metada
 VALUES
   ('daily_analytics_snapshot', 'analytics_snapshot', '0 3 * * *', true, '{"description": "Create daily admin_analytics snapshot at 3am"}'),
   ('nudge_inactive_users', 'nudge_email', '0 9 * * *', true, '{"description": "Send nudge emails to users who signed up 7 days ago with no specs", "days_after_signup": 7}'),
-  ('remind_undownloaded_specs', 'reminder_email', '0 10 * * *', true, '{"description": "Remind users who completed specs 3 days ago but haven't downloaded", "days_after_complete": 3}'),
+  ('remind_undownloaded_specs', 'reminder_email', '0 10 * * *', true, '{"description": "Remind users who completed specs 3 days ago but have not downloaded", "days_after_complete": 3}'),
   ('upsell_downloaded_specs', 'upsell_email', '0 11 * * *', true, '{"description": "Send ForgeBoard upsell to users who downloaded specs 7 days ago", "days_after_download": 7}')
 ON CONFLICT (job_name) DO NOTHING;
 
